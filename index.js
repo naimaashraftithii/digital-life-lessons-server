@@ -65,6 +65,30 @@ async function run() {
     res.status(500).json({ message: e.message });
   }
 });
+app.post("/lessons", async (req, res) => {
+  try {
+    const lesson = req.body;
+
+    if (!lesson?.title || !lesson?.description || !lesson?.creator?.uid) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const now = new Date();
+
+    const doc = {
+      ...lesson,
+      likes: [],
+      likesCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const result = await lessonsCollection.insertOne(doc);
+    res.json({ success: true, insertedId: result.insertedId });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
   app.post("/users/upsert", async (req, res) => {
   try {
