@@ -90,6 +90,34 @@ app.post("/lessons", async (req, res) => {
   }
 });
 
+
+app.get("/lessons/public", async (req, res) => {
+  try {
+    const { search = "", category = "", tone = "" } = req.query;
+
+    const query = { visibility: "public" };
+
+    if (category) query.category = category;
+    if (tone) query.tone = tone;
+
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const lessons = await lessonsCollection
+      .find(query)
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json(lessons);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
   app.post("/users/upsert", async (req, res) => {
   try {
     const { uid, email, name, photoURL } = req.body;
