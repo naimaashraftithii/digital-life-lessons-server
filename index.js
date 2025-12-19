@@ -48,6 +48,30 @@ async function run() {
   } catch (err) {
     console.error("❌ Server failed:", err.message);
   }
+  
+  app.post("/users/upsert", async (req, res) => {
+  try {
+    const { uid, email, name, photoURL } = req.body;
+    if (!uid || !email) return res.status(400).json({ message: "uid & email required" });
+
+    const now = new Date();
+
+    const result = await usersCollection.updateOne(
+      { uid },
+      {
+        $set: { uid, email, name: name || "", photoURL: photoURL || "", updatedAt: now },
+        $setOnInsert: { role: "user", isPremium: false, createdAt: now },
+      },
+      { upsert: true }
+    );
+
+    res.json({ success: true, result });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+  
 }
 run();
 
