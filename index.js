@@ -128,6 +128,47 @@ app.get("/lessons/:id", async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+const { ObjectId } = require("mongodb");
+
+app.get("/lessons/:id", async (req, res) => {
+  try {
+    const lesson = await lessonsCollection.findOne({ _id: new ObjectId(req.params.id) });
+    if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+    res.json(lesson);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+app.post("/favorites/toggle", async (req, res) => {
+  try {
+    const { uid, lessonId } = req.body;
+    if (!uid || !lessonId) return res.status(400).json({ message: "uid & lessonId required" });
+
+    const exists = await favoritesCollection.findOne({ uid, lessonId });
+
+    if (exists) {
+      await favoritesCollection.deleteOne({ uid, lessonId });
+      return res.json({ saved: false });
+    }
+
+    await favoritesCollection.insertOne({ uid, lessonId, createdAt: new Date() });
+    res.json({ saved: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.get("/favorites", async (req, res) => {
+  try {
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ message: "uid required" });
+
+    const favs = await favoritesCollection.find({ uid }).sort({ createdAt: -1 }).toArray();
+    res.json(favs);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
   app.post("/users/upsert", async (req, res) => {
   try {
