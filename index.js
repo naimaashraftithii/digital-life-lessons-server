@@ -117,6 +117,17 @@ app.get("/lessons/public", async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+const { ObjectId } = require("mongodb");
+
+app.get("/lessons/:id", async (req, res) => {
+  try {
+    const lesson = await lessonsCollection.findOne({ _id: new ObjectId(req.params.id) });
+    if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+    res.json(lesson);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
   app.post("/users/upsert", async (req, res) => {
   try {
