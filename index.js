@@ -169,6 +169,27 @@ app.get("/favorites", async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+app.post("/lessonReports", async (req, res) => {
+  try {
+    const { lessonId, reporterUid, reporterEmail, reason } = req.body;
+
+    if (!lessonId || (!reporterUid && !reporterEmail) || !reason) {
+      return res.status(400).json({ message: "Missing report fields" });
+    }
+
+    await lessonReportsCollection.insertOne({
+      lessonId,
+      reporterUid: reporterUid || null,
+      reporterEmail: reporterEmail || null,
+      reason,
+      createdAt: new Date(),
+    });
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
   app.post("/users/upsert", async (req, res) => {
   try {
