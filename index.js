@@ -48,7 +48,24 @@ async function run() {
   } catch (err) {
     console.error("❌ Server failed:", err.message);
   }
-  
+  app.get("/users/plan", async (req, res) => {
+  try {
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ message: "uid required" });
+
+    const user = await usersCollection.findOne(
+      { uid },
+      { projection: { isPremium: 1, role: 1, email: 1, name: 1, photoURL: 1 } }
+    );
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({ isPremium: !!user.isPremium, role: user.role || "user", user });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
   app.post("/users/upsert", async (req, res) => {
   try {
     const { uid, email, name, photoURL } = req.body;
