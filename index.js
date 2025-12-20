@@ -1,4 +1,7 @@
 require("dotenv").config();
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -82,6 +85,57 @@ async function run() {
     lessonReportsCollection = db.collection("lessonReports");
 
     console.log("✅ MongoDB connected");
+
+    app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  let event;
+
+  try {
+    const sig = req.headers["stripe-signature"];
+
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err) {
+    console.error("❌ Webhook signature verify failed:", err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  try {
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
+
+      const uid = session?.metadata?.uid;
+      const email = session?.metadata?.email;
+
+      // ✅ mark premium true
+      await usersCollection.updateOne(
+        { uid },
+        { $set: { isPremium: true, updatedAt: new Date() } }
+      );
+
+      // ✅ save payment history
+      await paymentsCollection.insertOne({
+        uid,
+        email: email || session.customer_email,
+        stripeSessionId: session.id,
+        stripePaymentIntentId: session.payment_intent,
+        amount: session.amount_total,
+        currency: session.currency,
+        status: "paid",
+        createdAt: new Date(),
+      });
+
+      console.log("✅ Premium activated for uid:", uid);
+    }
+
+    res.json({ received: true });
+  } catch (e) {
+    console.error("❌ Webhook handler error:", e.message);
+    res.status(500).json({ message: e.message });
+  }
+});
 
     /* -------------------- Basic Routes -------------------- */
     app.get("/", (req, res) => res.send("✅ Digital Life Lessons Server Running"));
@@ -221,6 +275,51 @@ async function run() {
         res.status(500).json({ message: e.message });
       }
     });
+app.post("/create-checkout-session", async (req, res) => {
+  try {
+    const { uid, email } = req.body;
+
+    if (!uid || !email) {
+      return res.status(400).json({ message: "uid & email required" });
+    }
+
+    const user = await usersCollection.findOne({ uid });
+    if (!user) return res.status(404).json({ message: "User not found. Upsert first." });
+
+    if (user.isPremium) {
+      return res.status(400).json({ message: "Already premium" });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      customer_email: email,
+
+      line_items: [
+        {
+          price_data: {
+            currency: "bdt",
+            product_data: {
+              name: "Digital Life Lessons — Premium (Lifetime)",
+              description: "One-time payment for lifetime premium access.",
+            },
+            unit_amount: 1500 * 100, // bdt->paisa
+          },
+          quantity: 1,
+        },
+      ],
+
+      metadata: { uid, email },
+
+      success_url: `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.CLIENT_URL}/payment/cancel`,
+    });
+
+    res.json({ url: session.url });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
     /* -------------------- Reports -------------------- */
     app.post("/lessonReports", async (req, res) => {
