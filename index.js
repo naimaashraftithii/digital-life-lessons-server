@@ -4,31 +4,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 /* -------------------- CORS -------------------- */
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      const allowed = [
-        process.env.CLIENT_URL,
-        "http://localhost:5173",
-        "http://localhost:3000",
 
-        // production netlify (add exact origins)
-        "https://digitallife-lessons-client.netlify.app",
-        "https://digital-life-lessons-client.netlify.app",
-      ]
-        .filter(Boolean)
-        .map((u) => u.replace(/\/$/, "")); // remove trailing slash
-
-      if (!origin) return cb(null, true);
-
-      const normalizedOrigin = origin.replace(/\/$/, "");
-      if (allowed.includes(normalizedOrigin)) return cb(null, true);
-
-      return cb(new Error("Not allowed by CORS: " + origin));
-    },
-    credentials: true,
-  })
-);
 const Stripe = require("stripe");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
@@ -105,10 +81,18 @@ app.use(
         process.env.CLIENT_URL,
         "http://localhost:5173",
         "http://localhost:3000",
-      ].filter(Boolean);
+
+        // production netlify (add exact origins)
+        "https://digitallife-lessons-client.netlify.app",
+        "https://digital-life-lessons-client.netlify.app",
+      ]
+        .filter(Boolean)
+        .map((u) => u.replace(/\/$/, "")); // remove trailing slash
 
       if (!origin) return cb(null, true);
-      if (allowed.includes(origin)) return cb(null, true);
+
+      const normalizedOrigin = origin.replace(/\/$/, "");
+      if (allowed.includes(normalizedOrigin)) return cb(null, true);
 
       return cb(new Error("Not allowed by CORS: " + origin));
     },

@@ -5,4 +5,3 @@ serviceAccount.json
 node_modules
 .vercel
 digital-life-lessons.json
-*.json
