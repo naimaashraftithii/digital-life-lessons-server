@@ -1,0 +1,8 @@
+.env
+serviceAccount.json
+*.pem
+*.key
+node_modules
+.vercel
+digital-life-lessons.json
+*.json
