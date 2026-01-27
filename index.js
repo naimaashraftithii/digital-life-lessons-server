@@ -358,6 +358,18 @@ app.get("/lessons/public", async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+// single lesson
+app.get("/lessons/:id", async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ message: "DB not ready" });
+
+    const lesson = await lessonsCollection.findOne({ _id: new ObjectId(req.params.id) });
+    if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+    res.json(lesson);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
 /* -------------------- Start Server -------------------- */
 app.listen(port, () => console.log(`✅ Server listening on port ${port}`));
