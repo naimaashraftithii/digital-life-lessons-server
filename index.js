@@ -148,22 +148,7 @@ app.get("/health", async (req, res) => {
    ✅ HOME
    ========================= */
 
-// GET /home/featured
-app.get("/home/featured", async (req, res) => {
-  try {
-    if (!dbReady) return res.status(503).json({ message: "DB not ready" });
 
-    const lessons = await lessonsCollection
-      .find({ isFeatured: true, visibility: "public" })
-      .sort({ createdAt: -1 })
-      .limit(12)
-      .toArray();
-
-    res.json(lessons);
-  } catch (e) {
-    res.status(500).json({ message: e.message || "Failed to load featured lessons" });
-  }
-});
 
 // GET /home/most-saved
 app.get("/home/most-saved", async (req, res) => {
