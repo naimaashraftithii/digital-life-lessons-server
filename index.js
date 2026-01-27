@@ -321,5 +321,43 @@ app.get("/lessons/my", async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+
+// public lessons pagination
+app.get("/lessons/public", async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ message: "DB not ready" });
+
+    const { search = "", category = "", tone = "" } = req.query;
+
+    const page = Math.max(1, parseInt(req.query.page || "1"));
+    const limit = Math.max(1, Math.min(50, parseInt(req.query.limit || "9")));
+    const skip = (page - 1) * limit;
+
+    const query = { visibility: "public" };
+    if (category) query.category = category;
+    if (tone) query.tone = tone;
+
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const total = await lessonsCollection.countDocuments(query);
+
+    const lessons = await lessonsCollection
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .toArray();
+
+    res.json({ lessons, total, currentPage: page, totalPages: Math.max(1, Math.ceil(total / limit)) });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 /* -------------------- Start Server -------------------- */
 app.listen(port, () => console.log(`✅ Server listening on port ${port}`));
