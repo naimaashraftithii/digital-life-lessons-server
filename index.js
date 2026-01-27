@@ -239,7 +239,48 @@ app.get("/home/top-contributors", async (req, res) => {
     res.status(500).json({ message: e.message || "Failed to load top contributors" });
   }
 });
+/* USERS*/
 
+app.post("/users/upsert", async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ message: "DB not ready" });
+
+    const { uid, email, name, photoURL } = req.body;
+    if (!uid || !email) return res.status(400).json({ message: "uid & email required" });
+
+    const now = new Date();
+    const result = await usersCollection.updateOne(
+      { uid },
+      {
+        $set: { uid, email, name: name || "", photoURL: photoURL || "", updatedAt: now },
+        $setOnInsert: { role: "user", isPremium: false, createdAt: now },
+      },
+      { upsert: true }
+    );
+
+    res.json({ success: true, result });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.get("/users/plan/:uid", async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ message: "DB not ready" });
+
+    const uid = req.params.uid;
+    const user = await usersCollection.findOne(
+      { uid },
+      { projection: { isPremium: 1, role: 1, email: 1, name: 1, photoURL: 1 } }
+    );
+
+    if (!user) return res.json({ isPremium: false, role: "user", user: null });
+
+    res.json({ isPremium: !!user.isPremium, role: user.role || "user", user });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
 /* -------------------- Start Server -------------------- */
 app.listen(port, () => console.log(`✅ Server listening on port ${port}`));
