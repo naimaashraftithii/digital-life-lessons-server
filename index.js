@@ -436,7 +436,65 @@ app.patch("/lessons/:id/access", async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+// like toggle
+app.patch("/lessons/:id/like", async (req, res) => {
+  try {
+    const { uid } = req.body;
+    if (!uid) return res.status(400).json({ message: "uid required" });
 
+    const id = req.params.id;
+    const lesson = await lessonsCollection.findOne({ _id: new ObjectId(id) });
+    if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+
+    const alreadyLiked = Array.isArray(lesson.likes) && lesson.likes.includes(uid);
+
+    const update = alreadyLiked
+      ? { $pull: { likes: uid }, $inc: { likesCount: -1 }, $set: { updatedAt: new Date() } }
+      : { $addToSet: { likes: uid }, $inc: { likesCount: 1 }, $set: { updatedAt: new Date() } };
+
+    await lessonsCollection.updateOne({ _id: new ObjectId(id) }, update);
+
+    const updated = await lessonsCollection.findOne(
+      { _id: new ObjectId(id) },
+      { projection: { likesCount: 1 } }
+    );
+
+    res.json({ likesCount: updated?.likesCount || 0 });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// favorites count
+app.get("/lessons/:id/favorites-count", async (req, res) => {
+  try {
+    const lessonId = req.params.id;
+    const count = await favoritesCollection.countDocuments({ lessonId });
+    res.json({ favoritesCount: count });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// similar
+app.get("/lessons/:id/similar", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const current = await lessonsCollection.findOne({ _id: new ObjectId(id) });
+    if (!current) return res.json([]);
+
+    const query = {
+      _id: { $ne: new ObjectId(id) },
+      visibility: "public",
+      $or: [{ category: current.category }, { tone: current.tone }],
+    };
+
+    const similar = await lessonsCollection.find(query).sort({ createdAt: -1 }).limit(6).toArray();
+    res.json(similar);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
 /* -------------------- Start Server -------------------- */
 app.listen(port, () => console.log(`✅ Server listening on port ${port}`));
