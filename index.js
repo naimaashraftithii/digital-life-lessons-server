@@ -395,6 +395,48 @@ app.delete("/lessons/:id", async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+// visibility
+app.patch("/lessons/:id/visibility", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { visibility } = req.body;
+
+    if (!["public", "private"].includes(visibility)) {
+      return res.status(400).json({ message: "visibility must be public/private" });
+    }
+
+    await lessonsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { visibility, updatedAt: new Date() } }
+    );
+
+    res.json({ success: true, visibility });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// access level
+app.patch("/lessons/:id/access", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { accessLevel } = req.body;
+
+    if (!["free", "premium"].includes(accessLevel)) {
+      return res.status(400).json({ message: "accessLevel must be free/premium" });
+    }
+
+    await lessonsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { accessLevel, updatedAt: new Date() } }
+    );
+
+    res.json({ success: true, accessLevel });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 
 /* -------------------- Start Server -------------------- */
 app.listen(port, () => console.log(`✅ Server listening on port ${port}`));
