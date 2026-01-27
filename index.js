@@ -370,6 +370,31 @@ app.get("/lessons/:id", async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+// update lesson
+app.patch("/lessons/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const update = { ...req.body, updatedAt: new Date() };
+
+    await lessonsCollection.updateOne({ _id: new ObjectId(id) }, { $set: update });
+    const updated = await lessonsCollection.findOne({ _id: new ObjectId(id) });
+
+    res.json(updated);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// delete lesson
+app.delete("/lessons/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    await lessonsCollection.deleteOne({ _id: new ObjectId(id) });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
 /* -------------------- Start Server -------------------- */
 app.listen(port, () => console.log(`✅ Server listening on port ${port}`));
