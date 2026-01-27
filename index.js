@@ -205,7 +205,40 @@ app.get("/home/most-saved", async (req, res) => {
   }
 });
 
+// GET /home/top-contributors
+app.get("/home/top-contributors", async (req, res) => {
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 7);
 
+    const rows = await lessonsCollection
+      .aggregate([
+        { $match: { createdAt: { $gte: since } } },
+        { $group: { _id: "$creator.uid", lessons: { $sum: 1 } } },
+        { $sort: { lessons: -1 } },
+        { $limit: 12 },
+
+        { $lookup: { from: "users", localField: "_id", foreignField: "uid", as: "user" } },
+        { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+
+        {
+          $project: {
+            _id: 0,
+            uid: "$_id",
+            lessons: 1,
+            name: "$user.name",
+            email: "$user.email",
+            photoURL: "$user.photoURL",
+          },
+        },
+      ])
+      .toArray();
+
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ message: e.message || "Failed to load top contributors" });
+  }
+});
 
 
 /* -------------------- Start Server -------------------- */
