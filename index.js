@@ -303,5 +303,23 @@ app.post("/lessons", async (req, res) => {
   }
 });
 
+// my lessons
+app.get("/lessons/my", async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ message: "DB not ready" });
+
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ message: "uid required" });
+
+    const lessons = await lessonsCollection
+      .find({ "creator.uid": uid })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json(lessons);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 /* -------------------- Start Server -------------------- */
 app.listen(port, () => console.log(`✅ Server listening on port ${port}`));
