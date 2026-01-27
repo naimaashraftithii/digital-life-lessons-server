@@ -579,5 +579,72 @@ app.delete("/comments/:id", async (req, res) => {
   }
 });
 
+/* =========================
+   ✅ STRIPE CHECKOUT
+   ========================= */
+
+app.post("/create-checkout-session", async (req, res) => {
+  try {
+    const { uid, email } = req.body;
+    if (!uid || !email) return res.status(400).json({ message: "uid & email required" });
+
+    const user = await usersCollection.findOne({ uid });
+    if (!user) return res.status(404).json({ message: "User not found. Upsert first." });
+    if (user.isPremium) return res.status(400).json({ message: "Already premium" });
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      customer_email: email,
+      line_items: [
+        {
+          price_data: {
+            currency: "bdt",
+            product_data: {
+              name: "Digital Life Lessons — Premium (Lifetime)",
+              description: "One-time payment for lifetime premium access.",
+            },
+            unit_amount: 1500 * 100,
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: { uid, email },
+      success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.CLIENT_URL}/payment-cancel`,
+    });
+
+    res.json({ url: session.url });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+/* =========================
+   ✅ REPORTS
+   ========================= */
+
+app.post("/lessonReports", async (req, res) => {
+  try {
+    const { lessonId, reporterUid, reporterEmail, reason } = req.body;
+
+    if (!lessonId || (!reporterUid && !reporterEmail) || !reason) {
+      return res.status(400).json({ message: "Missing report fields" });
+    }
+
+    await lessonReportsCollection.insertOne({
+      lessonId,
+      reporterUid: reporterUid || null,
+      reporterEmail: reporterEmail || null,
+      reason,
+      createdAt: new Date(),
+    });
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 /* -------------------- Start Server -------------------- */
 app.listen(port, () => console.log(`✅ Server listening on port ${port}`));
