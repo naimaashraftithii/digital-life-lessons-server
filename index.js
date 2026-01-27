@@ -495,6 +495,89 @@ app.get("/lessons/:id/similar", async (req, res) => {
     res.status(500).json({ message: e.message });
   }
 });
+/* =========================
+   ✅ FAVORITES
+   ========================= */
+
+app.post("/favorites/toggle", async (req, res) => {
+  try {
+    const { uid, lessonId } = req.body;
+    if (!uid || !lessonId) return res.status(400).json({ message: "uid & lessonId required" });
+
+    const exists = await favoritesCollection.findOne({ uid, lessonId });
+
+    if (exists) {
+      await favoritesCollection.deleteOne({ uid, lessonId });
+      return res.json({ saved: false });
+    }
+
+    await favoritesCollection.insertOne({ uid, lessonId, createdAt: new Date() });
+    res.json({ saved: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.get("/favorites", async (req, res) => {
+  try {
+    const { uid } = req.query;
+    if (!uid) return res.status(400).json({ message: "uid required" });
+
+    const favs = await favoritesCollection.find({ uid }).sort({ createdAt: -1 }).toArray();
+    res.json(favs);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+/* =========================
+   ✅ COMMENTS
+   ========================= */
+
+app.get("/comments", async (req, res) => {
+  try {
+    const { lessonId } = req.query;
+    if (!lessonId) return res.json([]);
+
+    const rows = await commentsCollection.find({ lessonId }).sort({ createdAt: -1 }).toArray();
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.post("/comments", async (req, res) => {
+  try {
+    const body = req.body;
+    if (!body?.lessonId || !body?.uid || !body?.text) {
+      return res.status(400).json({ message: "lessonId, uid, text required" });
+    }
+
+    const doc = { ...body, createdAt: new Date() };
+    const result = await commentsCollection.insertOne(doc);
+
+    res.json({ success: true, insertedId: result.insertedId });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+app.delete("/comments/:id", async (req, res) => {
+  try {
+    const { uid } = req.query;
+    const id = req.params.id;
+    if (!uid) return res.status(400).json({ message: "uid required" });
+
+    const comment = await commentsCollection.findOne({ _id: new ObjectId(id) });
+    if (!comment) return res.status(404).json({ message: "Not found" });
+    if (comment.uid !== uid) return res.status(403).json({ message: "Forbidden" });
+
+    await commentsCollection.deleteOne({ _id: new ObjectId(id) });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
 
 /* -------------------- Start Server -------------------- */
 app.listen(port, () => console.log(`✅ Server listening on port ${port}`));
