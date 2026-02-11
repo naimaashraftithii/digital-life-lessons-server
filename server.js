@@ -175,86 +175,292 @@ async function run() {
 
   // Stripe Checkout
 
-  app.post("/create-checkout-session", async (req, res) => {
+  // ✅ Stripe Webhook (MUST be before express.json)
+app.post("/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ message: "DB not ready yet" });
+
+    const sig = req.headers["stripe-signature"];
+    let event;
+
     try {
-      const { uid, email } = req.body;
-      if (!uid || !email) return res.status(400).json({ message: "uid & email required" });
-
-      const user = await global.usersCollection.findOne({ uid });
-      if (!user) return res.status(404).json({ message: "User not found. Upsert first." });
-      if (user.isPremium) return res.status(400).json({ message: "Already premium" });
-
-  
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        payment_method_types: ["card"],
-        customer_email: email,
-        line_items: [
-          {
-            price_data: {
-              currency: "bdt",
-              product_data: {
-                name: "Digital Life Lessons — Lifetime Premium",
-                description: "One-time payment for lifetime premium access.",
-              },
-              unit_amount: 1500 * 100,
-            },
-            quantity: 1,
-          },
-        ],
-        metadata: { uid, email },
-        success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.CLIENT_URL}/payment-cancel`,
-      });
-
-      res.json({ url: session.url });
-    } catch (e) {
-      res.status(500).json({ message: e.message });
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err) {
+      console.error("❌ Webhook signature verify failed:", err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
     }
-  });
 
-  // Confirm payment fallback 
-  app.post("/payments/confirm", async (req, res) => {
-    try {
-      const { sessionId } = req.body;
-      if (!sessionId) return res.status(400).json({ message: "sessionId required" });
-
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
-      const paid = session?.payment_status === "paid";
-      if (!paid) return res.status(400).json({ message: "Payment not completed" });
+    // ✅ Handle success
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object;
 
       const uid = session?.metadata?.uid;
-      const email =
-        session?.metadata?.email ||
-        session?.customer_details?.email ||
-        session?.customer_email;
+      const email = session?.metadata?.email || session.customer_email;
 
-      if (!uid) return res.status(400).json({ message: "uid missing in session metadata" });
+      if (uid) {
+        // ✅ Premium true
+        await usersCollection.updateOne(
+          { uid },
+          { $set: { isPremium: true, updatedAt: new Date() } }
+        );
 
-      await global.usersCollection.updateOne(
+        // ✅ idempotent payment record
+        await paymentsCollection.updateOne(
+          { stripeSessionId: session.id },
+          {
+            $setOnInsert: {
+              uid,
+              email,
+              stripeSessionId: session.id,
+              stripePaymentIntentId: session.payment_intent,
+              amount: session.amount_total,
+              currency: session.currency,
+              status: "paid",
+              createdAt: new Date(),
+            },
+          },
+          { upsert: true }
+        );
+
+        console.log("✅ Premium activated by webhook for uid:", uid);
+      }
+    }
+
+    return res.json({ received: true });
+  } catch (e) {
+    console.error("❌ Webhook handler error:", e.message);
+    return res.status(500).json({ message: e.message });
+  }
+});
+
+// ✅ NOW normal json middleware
+app.use(express.json());
+
+// -------------------- USERS --------------------
+
+// ✅ upsert user (called after Firebase login)
+app.post("/users/upsert", async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ message: "DB not ready" });
+
+    const { uid, email, name, photoURL } = req.body;
+    if (!uid || !email) return res.status(400).json({ message: "uid & email required" });
+
+    const update = {
+      $set: {
+        uid,
+        email,
+        name: name || "",
+        photoURL: photoURL || "",
+        updatedAt: new Date(),
+      },
+      $setOnInsert: {
+        role: "user",
+        isPremium: false,
+        createdAt: new Date(),
+      },
+    };
+
+    await usersCollection.updateOne({ uid }, update, { upsert: true });
+    const user = await usersCollection.findOne({ uid }, { projection: { _id: 0 } });
+
+    res.json(user);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ✅ plan endpoint (single source of truth)
+app.get("/users/plan", async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ message: "DB not ready" });
+
+    const uid = req.query.uid;
+    if (!uid) return res.status(400).json({ message: "uid required" });
+
+    const user = await usersCollection.findOne({ uid }, { projection: { _id: 0 } });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({
+      isPremium: !!user.isPremium,
+      role: user.role || "user",
+      user,
+    });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// -------------------- STRIPE --------------------
+
+// ✅ create checkout session
+app.post("/create-checkout-session", async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ message: "DB not ready" });
+
+    const { uid, email } = req.body;
+    if (!uid || !email) return res.status(400).json({ message: "uid & email required" });
+
+    const user = await usersCollection.findOne({ uid });
+    if (!user) return res.status(404).json({ message: "User not found. Upsert first." });
+    if (user.isPremium) return res.status(400).json({ message: "Already premium" });
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer_email: email,
+      line_items: [
+        {
+          price_data: {
+            currency: "bdt",
+            product_data: {
+              name: "Digital Life Lessons — Premium (Lifetime)",
+              description: "One-time payment for lifetime premium access.",
+            },
+            unit_amount: 1500 * 100,
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: { uid, email },
+      success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.CLIENT_URL}/payment-cancel`,
+    });
+
+    res.json({ url: session.url });
+  } catch (e) {
+    console.error("❌ create-checkout-session:", e.message);
+    res.status(500).json({ message: e.message });
+  }
+});
+
+// ✅ optional confirm route (fallback if webhook delay)
+app.post("/payments/confirm", async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ message: "DB not ready" });
+
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ message: "sessionId required" });
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const paid = session?.payment_status === "paid";
+
+    const uid = session?.metadata?.uid;
+    const email = session?.metadata?.email || session.customer_email;
+
+    if (paid && uid) {
+      await usersCollection.updateOne(
         { uid },
-        { $set: { isPremium: true, premiumSince: new Date(), premiumEmail: email || null, updatedAt: new Date() } }
+        { $set: { isPremium: true, updatedAt: new Date() } }
       );
 
-      const exists = await global.paymentsCollection.findOne({ stripeSessionId: session.id });
-      if (!exists) {
-        await global.paymentsCollection.insertOne({
-          uid,
-          email: email || null,
-          stripeSessionId: session.id,
-          stripePaymentIntentId: session.payment_intent || null,
-          amountTotal: session.amount_total || null,
-          currency: session.currency || null,
-          status: "paid",
-          createdAt: new Date(),
-        });
-      }
-
-      res.json({ success: true, isPremium: true });
-    } catch (e) {
-      res.status(500).json({ message: e.message });
+      await paymentsCollection.updateOne(
+        { stripeSessionId: session.id },
+        {
+          $setOnInsert: {
+            uid,
+            email,
+            stripeSessionId: session.id,
+            stripePaymentIntentId: session.payment_intent,
+            amount: session.amount_total,
+            currency: session.currency,
+            status: "paid",
+            createdAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
     }
-  });
+
+    res.json({ ok: true, paid, uid });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+  // app.post("/create-checkout-session", async (req, res) => {
+  //   try {
+  //     const { uid, email } = req.body;
+  //     if (!uid || !email) return res.status(400).json({ message: "uid & email required" });
+
+  //     const user = await global.usersCollection.findOne({ uid });
+  //     if (!user) return res.status(404).json({ message: "User not found. Upsert first." });
+  //     if (user.isPremium) return res.status(400).json({ message: "Already premium" });
+
+  
+  //     const session = await stripe.checkout.sessions.create({
+  //       mode: "payment",
+  //       payment_method_types: ["card"],
+  //       customer_email: email,
+  //       line_items: [
+  //         {
+  //           price_data: {
+  //             currency: "bdt",
+  //             product_data: {
+  //               name: "Digital Life Lessons — Lifetime Premium",
+  //               description: "One-time payment for lifetime premium access.",
+  //             },
+  //             unit_amount: 1500 * 100,
+  //           },
+  //           quantity: 1,
+  //         },
+  //       ],
+  //       metadata: { uid, email },
+  //       success_url: `${process.env.CLIENT_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+  //       cancel_url: `${process.env.CLIENT_URL}/payment-cancel`,
+  //     });
+
+  //     res.json({ url: session.url });
+  //   } catch (e) {
+  //     res.status(500).json({ message: e.message });
+  //   }
+  // });
+
+  // // Confirm payment fallback 
+  // app.post("/payments/confirm", async (req, res) => {
+  //   try {
+  //     const { sessionId } = req.body;
+  //     if (!sessionId) return res.status(400).json({ message: "sessionId required" });
+
+  //     const session = await stripe.checkout.sessions.retrieve(sessionId);
+  //     const paid = session?.payment_status === "paid";
+  //     if (!paid) return res.status(400).json({ message: "Payment not completed" });
+
+  //     const uid = session?.metadata?.uid;
+  //     const email =
+  //       session?.metadata?.email ||
+  //       session?.customer_details?.email ||
+  //       session?.customer_email;
+
+  //     if (!uid) return res.status(400).json({ message: "uid missing in session metadata" });
+
+  //     await global.usersCollection.updateOne(
+  //       { uid },
+  //       { $set: { isPremium: true, premiumSince: new Date(), premiumEmail: email || null, updatedAt: new Date() } }
+  //     );
+
+  //     const exists = await global.paymentsCollection.findOne({ stripeSessionId: session.id });
+  //     if (!exists) {
+  //       await global.paymentsCollection.insertOne({
+  //         uid,
+  //         email: email || null,
+  //         stripeSessionId: session.id,
+  //         stripePaymentIntentId: session.payment_intent || null,
+  //         amountTotal: session.amount_total || null,
+  //         currency: session.currency || null,
+  //         status: "paid",
+  //         createdAt: new Date(),
+  //       });
+  //     }
+
+  //     res.json({ success: true, isPremium: true });
+  //   } catch (e) {
+  //     res.status(500).json({ message: e.message });
+  //   }
+  // });
 
 
   // Lessons
