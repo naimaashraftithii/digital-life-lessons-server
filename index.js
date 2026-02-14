@@ -81,7 +81,7 @@ app.post("/webhook", express.raw({ type: "application/json" }), async (req, res)
           createdAt: new Date(),
         });
 
-        console.log("✅ Premium activated for uid:", uid);
+        console.log("✔ Premium activated for uid:", uid);
       }
     }
 
@@ -135,7 +135,7 @@ async function run() {
   commentsCollection = db.collection("comments");
 
   dbReady = true;
-  console.log("✅ MongoDB connected");
+  console.log("✔ MongoDB connected");
 }
 
 run().catch((err) => {
@@ -143,8 +143,8 @@ run().catch((err) => {
   console.log("❌ Mongo connect error:", err.message);
 });
 
-/* -------------------- Basic Routes -------------------- */
-app.get("/", (req, res) => res.send("✅ Digital Life Lessons Server Running"));
+/*  Basic Routes  */
+app.get("/", (req, res) => res.send("✔ Digital Life Lessons Server Running"));
 
 app.get("/health", async (req, res) => {
   try {
@@ -156,9 +156,7 @@ app.get("/health", async (req, res) => {
   }
 });
 
-/* =========================
-   ✅ USERS
-   ========================= */
+/* USERS */
 
 app.post("/users/upsert", async (req, res) => {
   try {
@@ -183,8 +181,7 @@ app.post("/users/upsert", async (req, res) => {
   }
 });
 
-// GET /users/plan?uid=...
-// ✅ GET /users/plan?uid=...
+
 // GET /users/plan?uid=...
 app.get("/users/plan", async (req, res) => {
   try {
@@ -211,40 +208,6 @@ app.get("/users/plan", async (req, res) => {
 });
 
 
-
-
-
-
-// GET /users/plan?uid=...
-// app.get("/users/plan", async (req, res) => {
-//   try {
-//     if (!dbReady) return res.status(503).json({ message: "DB not ready" });
-
-//     const uid = String(req.query.uid || "");
-//     if (!uid) return res.status(400).json({ message: "uid is required" });
-
-//     const user = await usersCollection.findOne(
-//       { uid },
-//       { projection: { _id: 0, uid: 1, email: 1, name: 1, photoURL: 1, role: 1, isPremium: 1 } }
-//     );
-
-//     if (!user) {
-//       return res.json({ isPremium: false, role: "user", user: null });
-//     }
-
-//     return res.json({
-//       isPremium: !!user.isPremium,
-//       role: user.role || "user",
-//       user,
-//     });
-//   } catch (e) {
-//     res.status(500).json({ message: e.message });
-//   }
-// });
-
-
-
-
 app.get("/users/plan/:uid", async (req, res) => {
   try {
     if (!dbReady) return res.status(503).json({ message: "DB not ready" });
@@ -263,11 +226,9 @@ app.get("/users/plan/:uid", async (req, res) => {
   }
 });
 
-/* =========================
-   ✅ LESSONS
-   ========================= */
+/* LESSONS */
 
-// CREATE lesson (normalize fields so public/admin works)
+// CREATE lesson 
 app.post("/lessons", async (req, res) => {
   try {
     if (!dbReady) return res.status(503).json({ message: "DB not ready" });
@@ -297,7 +258,7 @@ app.post("/lessons", async (req, res) => {
       creator,
       category,
       tone,
-      emotionalTone: tone, // keep both to support old UI
+      emotionalTone: tone, 
       visibility,
       accessLevel,
       likes: [],
@@ -334,7 +295,7 @@ app.get("/lessons/my", async (req, res) => {
   }
 });
 
-// PUBLIC lessons (tolerant for old docs: missing visibility or "Public")
+// PUBLIC lessons 
 app.get("/lessons/public", async (req, res) => {
   try {
     if (!dbReady) return res.status(503).json({ message: "DB not ready" });
@@ -355,7 +316,7 @@ app.get("/lessons/public", async (req, res) => {
     if (category) query.category = category;
 
     if (tone) {
-      // support docs having tone or emotionalTone
+      
       query.$and = query.$and || [];
       query.$and.push({
         $or: [{ tone }, { emotionalTone: tone }],
@@ -572,33 +533,9 @@ app.get("/lessons/:id/similar", async (req, res) => {
   }
 });
 
-// app.get("/lessons/:id/similar", async (req, res) => {
-//   try {
-//     const oid = safeObjectId(req.params.id);
-//     if (!oid) return res.status(400).json({ message: "Invalid lesson id" });
 
-//     const current = await lessonsCollection.findOne({ _id: oid });
-//     if (!current) return res.json([]);
 
-//     const query = {
-//       _id: { $ne: oid },
-//       $or: [
-//         { visibility: { $regex: /^public$/i } },
-//         { visibility: { $exists: false } },
-//       ],
-//       $or: [{ category: current.category }, { tone: current.tone }, { emotionalTone: current.tone }],
-//     };
-
-//     const similar = await lessonsCollection.find(query).sort({ createdAt: -1 }).limit(6).toArray();
-//     res.json(similar);
-//   } catch (e) {
-//     res.status(500).json({ message: e.message });
-//   }
-// });
-
-/* =========================
-   ✅ FAVORITES
-   ========================= */
+/* FAVORITES */
 
 app.post("/favorites/toggle", async (req, res) => {
   try {
@@ -631,9 +568,7 @@ app.get("/favorites", async (req, res) => {
   }
 });
 
-/* =========================
-   ✅ COMMENTS
-   ========================= */
+/*  COMMENTS */
 
 app.get("/comments", async (req, res) => {
   try {
@@ -681,9 +616,7 @@ app.delete("/comments/:id", async (req, res) => {
   }
 });
 
-/* =========================
-   ✅ STRIPE CHECKOUT
-   ========================= */
+/* STRIPE CHECKOUT */
 app.post("/payments/confirm", async (req, res) => {
   try {
     if (!dbReady) return res.status(503).json({ message: "DB not ready" });
@@ -742,7 +675,7 @@ app.post("/create-checkout-session", async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found. Upsert first." });
     if (user.isPremium) return res.status(400).json({ message: "Already premium" });
 
-    // ✅ IMPORTANT: redirect back to whoever called the API (localhost OR vercel)
+   
     const clientUrl =
       req.headers.origin ||
       process.env.CLIENT_URL ||
@@ -767,7 +700,7 @@ app.post("/create-checkout-session", async (req, res) => {
       ],
       metadata: { uid, email },
 
-      // ✅ changed here
+   
       success_url: `${clientUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${clientUrl}/payment-cancel`,
     });
@@ -779,9 +712,7 @@ app.post("/create-checkout-session", async (req, res) => {
 });
 
 
-/* =========================
-   ✅ REPORTS
-   ========================= */
+/*  REPORTS */
 
 app.post("/lessonReports", async (req, res) => {
   try {
@@ -807,10 +738,7 @@ app.post("/lessonReports", async (req, res) => {
   }
 });
 
-/* =========================
-   ✅ DASHBOARD SUMMARY (User)
-   GET /dashboard/summary?uid=xxx
-   ========================= */
+/* DASHBOARD SUMMARY  */
 
     app.get("/dashboard/summary", async (req, res) => {
   try {
@@ -866,9 +794,7 @@ app.post("/lessonReports", async (req, res) => {
 
     
 
-/* =========================
-   ✅ ADMIN ROUTES
-   ========================= */
+/*ADMIN ROUTES*/
 
 // ADMIN SUMMARY
 function startOfDay(d) {
@@ -905,7 +831,7 @@ app.get("/admin/summary", async (req, res) => {
       lessonsCollection.countDocuments({ createdAt: { $gte: today } }),
     ]);
 
-    // ✅ series: last 7 days (fill missing days with 0)
+    // series: last 7 days 
     const agg = await lessonsCollection
       .aggregate([
         { $match: { createdAt: { $gte: start } } },
@@ -931,7 +857,7 @@ app.get("/admin/summary", async (req, res) => {
       });
     }
 
-    // ✅ top contributors (last 7 days public lessons)
+    // top contributors 
     const topContributors = await lessonsCollection
       .aggregate([
         { $match: { visibility: { $regex: /^public$/i }, createdAt: { $gte: start } } },
@@ -963,62 +889,6 @@ app.get("/admin/summary", async (req, res) => {
   }
 });
 
-
-
-// app.get("/admin/summary", async (req, res) => {
-//   try {
-//     if (!dbReady) return res.status(503).json({ message: "DB not ready" });
-
-//     const today = startOfToday();
-
-//     const [
-//       totalUsers,
-//       totalPublicLessons,
-//       totalPrivateLessons,
-//       totalReports,
-//       todaysNewLessons,
-//     ] = await Promise.all([
-//       usersCollection.countDocuments({}),
-//       lessonsCollection.countDocuments({ visibility: { $regex: /^public$/i } }),
-//       lessonsCollection.countDocuments({ visibility: { $regex: /^private$/i } }),
-//       lessonReportsCollection.countDocuments({}),
-//       lessonsCollection.countDocuments({ createdAt: { $gte: today } }),
-//     ]);
-
-//     const topContributors = await lessonsCollection
-//       .aggregate([
-//         { $match: { visibility: { $regex: /^public$/i } } },
-//         { $group: { _id: "$creator.uid", lessons: { $sum: 1 } } },
-//         { $sort: { lessons: -1 } },
-//         { $limit: 8 },
-//         { $lookup: { from: "users", localField: "_id", foreignField: "uid", as: "user" } },
-//         { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
-//         {
-//           $project: {
-//             _id: 0,
-//             uid: "$_id",
-//             lessons: 1,
-//             name: { $ifNull: ["$user.name", "Unknown"] },
-//             photoURL: { $ifNull: ["$user.photoURL", FALLBACK_AVATAR] },
-//           },
-//         },
-//       ])
-//       .toArray();
-
-//     res.json({
-//       counts: {
-//         totalUsers,
-//         totalPublicLessons,
-//         totalPrivateLessons,
-//         totalReports,
-//         todaysNewLessons,
-//       },
-//       topContributors,
-//     });
-//   } catch (e) {
-//     res.status(500).json({ message: e.message || "Failed to load admin summary" });
-//   }
-// });
 
 // ADMIN USERS
 app.get("/admin/users", async (req, res) => {
@@ -1260,7 +1130,7 @@ app.delete("/admin/reported-lessons/:lessonId", async (req, res) => {
   }
 });
 
-// FEATURED (controlled by admin dashboard)
+// FEATURED 
 app.get("/home/featured", async (req, res) => {
   try {
     if (!dbReady) return res.status(503).json({ message: "DB not ready" });
@@ -1307,7 +1177,7 @@ app.get("/home/most-saved", async (req, res) => {
   }
 });
 
-// TOP CONTRIBUTORS (days=7 or days=0 all-time)
+// TOP CONTRIBUTORS
 app.get("/home/top-contributors", async (req, res) => {
   try {
     if (!dbReady) return res.status(503).json({ message: "DB not ready" });
@@ -1352,4 +1222,4 @@ app.get("/home/top-contributors", async (req, res) => {
 
 /* -------------------- Start Server -------------------- */
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log("✅ Server running on port", port));
+app.listen(port, () => console.log("✔ Server running on port", port));
